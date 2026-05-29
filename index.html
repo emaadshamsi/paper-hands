@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>PAPER HANDS</title>
+<style>
+  :root{
+    --bg:#070a09; --ink:#e8fff4; --green:#34f5a0; --green-dim:#1c8f5e;
+    --red:#ff4d6d; --amber:#f5c518; --hair:#16201b; --faint:#5e7068;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:var(--bg);overflow:hidden;
+    font-family:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;color:var(--ink)}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #stage{position:relative;width:min(100vw,calc(100vh*0.625));height:min(100vh,calc(100vw*1.6));
+    max-width:520px;max-height:832px;background:
+      radial-gradient(120% 80% at 50% 0%,#0c1612 0%,#070a09 60%);
+    border:1px solid var(--hair);box-shadow:0 0 80px rgba(52,245,160,.06),inset 0 0 120px rgba(0,0,0,.6);
+    overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  /* CRT scanlines + grain */
+  #fx{position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:.5;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 1px,transparent 1px 3px)}
+  .lbl{position:absolute;font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase}
+  #brand{top:16px;left:16px}
+  #bestlbl{top:16px;right:16px;text-align:right}
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;text-align:center;padding:28px;gap:14px;z-index:5;
+    background:radial-gradient(80% 60% at 50% 45%,rgba(7,10,9,.72),rgba(7,10,9,.94));
+    backdrop-filter:blur(2px)}
+  #overlay.hide{display:none}
+  #title{font-family:Archivo,system-ui,sans-serif;font-weight:900;font-size:clamp(40px,12vw,68px);
+    line-height:.92;letter-spacing:-.02em;color:var(--green);text-shadow:0 0 30px rgba(52,245,160,.35)}
+  #title small{display:block;font-size:.28em;letter-spacing:.4em;color:var(--ink);font-weight:700;margin-top:10px}
+  .tag{color:var(--faint);font-size:13px;max-width:300px;line-height:1.6}
+  .tag b{color:var(--amber);font-weight:600}
+  #cta{margin-top:8px;font-size:13px;letter-spacing:.18em;color:var(--green);
+    border:1px solid var(--green-dim);padding:12px 22px;border-radius:2px;text-transform:uppercase;
+    animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(52,245,160,.06);color:#bfffce0}}
+  #go{font-family:Archivo,sans-serif;font-weight:900;font-size:clamp(34px,9vw,52px);color:var(--red);
+    text-shadow:0 0 24px rgba(255,77,109,.4)}
+  .stat{font-size:14px;color:var(--ink)}
+  .stat b{color:var(--green);font-size:22px}
+  .stat .r{color:var(--red)}
+  #foot{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:10px;
+    letter-spacing:.15em;color:#2c3a33}
+  @media (hover:hover){#cta::after{content:" · SPACE / CLICK"}}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage">
+  <canvas id="c"></canvas>
+  <div id="fx"></div>
+  <div class="lbl" id="brand">PAPER HANDS</div>
+  <div class="lbl" id="bestlbl">BEST 0</div>
+  <div id="overlay">
+    <div id="title">PAPER<br>HANDS<small>HOLD FOR MORE · LOSE IT ALL</small></div>
+    <div class="tag"><b>Hold</b> to pump your multiplier. The longer you hold, the higher it climbs —
+      and the more likely it all <b>rugs</b>. <b>Release</b> to bank it. One rug ends the run.</div>
+    <div id="cta">TAP &amp; HOLD TO PUMP</div>
+  </div>
+  <div id="foot">a money_maker mini · v1.0</div>
+</div></div>
+<script>
+(()=>{
+"use strict";
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const stage=document.getElementById('stage');
+const overlay=document.getElementById('overlay'),titleEl=document.getElementById('title');
+const tagEl=document.querySelector('.tag'),cta=document.getElementById('cta');
+const bestlbl=document.getElementById('bestlbl');
+let W=0,H=0,DPR=1;
+function resize(){
+  const r=stage.getBoundingClientRect();W=r.width;H=r.height;DPR=Math.min(devicePixelRatio||1,2);
+  cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+addEventListener('resize',resize);
+
+// ---- audio (WebAudio, no assets) ----
+let AC=null;
+function ac(){if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)()}catch(e){}}return AC}
+function tone(freq,dur,type='sine',vol=.18){const a=ac();if(!a)return;
+  const o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.value=freq;
+  g.gain.value=vol;o.connect(g);g.connect(a.destination);const t=a.currentTime;
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  o.start(t);o.stop(t+dur);}
+function noise(dur=.45,vol=.4){const a=ac();if(!a)return;
+  const n=a.sampleRate*dur,buf=a.createBuffer(1,n,a.sampleRate),d=buf.getChannelData(0);
+  for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(1-i/n);
+  const s=a.createBufferSource(),g=a.createGain(),f=a.createBiquadFilter();
+  f.type='lowpass';f.frequency.value=900;s.buffer=buf;g.gain.value=vol;
+  s.connect(f);f.connect(g);g.connect(a.destination);s.start();}
+
+// ---- state ----
+const S={menu:0,pump:1,cashpop:2,over:3};
+let state=S.menu;
+let mult=1, score=0, best=+(localStorage.getItem('ph_best')||0);
+let held=false, t=0, shake=0, pops=[], particles=[], chart=[], cashFloat=null, rng=Math.random;
+let crashFlash=0, lastBank=0, bankGlow=0;
+bestlbl.textContent='BEST '+fmt(best);
+const beatTarget=+(new URLSearchParams(location.search).get('s')||0);
+if(beatTarget>0){tagEl.innerHTML+='<br><span style="color:#5cc8ff">📈 a friend banked $'+beatTarget.toLocaleString()+' — beat them.</span>';}
+
+function fmt(n){return '$'+Math.floor(n).toLocaleString()}
+function reset(){mult=1;score=0;chart=[];particles=[];pops=[];cashFloat=null;t=0;}
+
+function start(){
+  reset();state=S.pump;held=true;overlay.classList.add('hide');
+  if(ac()&&ac().state==='suspended')ac().resume();
+}
+function gameOver(){
+  state=S.over;shake=26;crashFlash=1;noise(.5,.5);tone(120,.5,'sawtooth',.25);
+  for(let i=0;i<60;i++)particles.push({x:px(),y:py(),vx:(rng()-.5)*9,vy:(rng()-.5)*9-2,life:1,c:'#ff4d6d'});
+  if(score>best){best=Math.floor(score);localStorage.setItem('ph_best',best);}
+  bestlbl.textContent='BEST '+fmt(best);
+  showOver();
+}
+function bank(){
+  if(state!==S.pump)return;
+  const gain=mult; score+=gain*100; lastBank=gain; bankGlow=1;
+  tone(660,.09,'square',.16);tone(990,.12,'square',.13);
+  cashFloat={v:gain,y:py(),life:1};
+  for(let i=0;i<18;i++)particles.push({x:px(),y:py(),vx:(rng()-.5)*5,vy:-rng()*5-1,life:1,c:'#34f5a0'});
+  mult=1;chart=[];t=0; // reset for next pump, keep holding? no—must re-press
+  held=false;state=S.cashpop;cashpopT=.0;
+}
+let cashpopT=0;
+// current "price marker" position helpers
+function px(){return W*0.5}
+function py(){const top=H*0.22,bot=H*0.80;const f=Math.min((mult-1)/14,1);return bot-(bot-top)*f;}
+
+// ---- input ----
+function press(e){
+  if(e&&e.cancelable)e.preventDefault();
+  if(state===S.menu||state===S.over){start();return;}
+  if(state===S.cashpop){held=true;state=S.pump;return;}
+  if(state===S.pump)held=true;
+}
+function release(e){
+  if(e&&e.cancelable)e.preventDefault();
+  if(state===S.pump&&held)bank();
+}
+stage.addEventListener('mousedown',press);
+addEventListener('mouseup',release);
+stage.addEventListener('touchstart',press,{passive:false});
+addEventListener('touchend',release,{passive:false});
+addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='Enter'){if(!e.repeat)press(e);}});
+addEventListener('keyup',e=>{if(e.code==='Space'||e.code==='Enter')release(e);});
+
+function showOver(){
+  overlay.classList.remove('hide');
+  titleEl.innerHTML='<div id="go">RUGGED.</div>';
+  tagEl.innerHTML='<span class="stat">banked <b>'+fmt(score)+'</b></span><br><span class="stat">best <b>'+fmt(best)+'</b></span>';
+  cta.style.display='block';cta.textContent='TAP TO RUN IT BACK';
+  buildShare(Math.floor(score));
+}
+function buildShare(amt){
+  let b=document.getElementById('shareBtn');
+  if(!b){b=document.createElement('div');b.id='shareBtn';
+    b.style.cssText='margin-top:2px;font-size:12px;letter-spacing:.16em;color:#5cc8ff;border:1px solid #1c4a5e;padding:9px 18px;border-radius:2px;text-transform:uppercase;cursor:pointer';
+    overlay.appendChild(b);}
+  b.textContent='📈 SHARE SCORE';
+  b.onclick=(e)=>{e.stopPropagation();
+    const url=location.origin+location.pathname+'?s='+amt;
+    const txt='I banked $'+amt.toLocaleString()+' in PAPER HANDS 📈 diamond hands? beat me: '+url;
+    (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject())
+      .then(()=>{b.textContent='✓ COPIED — GO BRAG';}).catch(()=>{b.textContent=txt;});
+  };
+}
+
+// ---- loop ----
+let last=performance.now();
+function frame(now){
+  const dt=Math.min((now-last)/1000,.05);last=now;t+=dt;
+  // update
+  if(state===S.pump&&held){
+    // multiplier accelerates the longer you hold
+    const rate=1.1+mult*0.16;
+    mult+=rate*dt;
+    chart.push(py());if(chart.length>W)chart.shift();
+    // rug probability grows with multiplier
+    // gentle early game: near-safe at low mult, risk ramps steeply as you get greedy;
+    // plus a 0.6s grace per pump so you can never insta-rug.
+    const pct=(0.0028 + Math.pow(Math.max(mult-1,0),1.6)*0.0015)*(dt*60);
+    if(t>0.6 && rng()<pct){gameOver();}
+    if(Math.floor(t*12)!==Math.floor((t-dt)*12)) tone(280+mult*34,.04,'square',.05);
+  }
+  if(state===S.cashpop){cashpopT+=dt; if(cashpopT>.18){state=S.pump;}}
+  shake*=0.86; crashFlash*=0.9; bankGlow*=0.92;
+  if(cashFloat){cashFloat.y-=40*dt;cashFloat.life-=dt*1.3;if(cashFloat.life<=0)cashFloat=null;}
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.25;p.life-=dt*1.4;});
+  particles=particles.filter(p=>p.life>0);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function draw(){
+  ctx.save();
+  const sx=(rng()-.5)*shake, sy=(rng()-.5)*shake;
+  ctx.clearRect(0,0,W,H);
+  ctx.translate(sx,sy);
+  // grid
+  ctx.strokeStyle='rgba(52,245,160,0.05)';ctx.lineWidth=1;
+  for(let y=H*0.2;y<H*0.85;y+=(H*0.65)/6){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // chart line
+  if(chart.length>1){
+    const x0=W*0.5-(chart.length-1);
+    ctx.lineWidth=3;ctx.strokeStyle= state===S.over?'#ff4d6d':'#34f5a0';
+    ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=18;
+    ctx.beginPath();
+    for(let i=0;i<chart.length;i++){const x=x0+i;const y=chart[i];i?ctx.lineTo(x,y):ctx.moveTo(x,y);}
+    ctx.stroke();ctx.shadowBlur=0;
+    // marker
+    const my=py();
+    ctx.fillStyle=state===S.over?'#ff4d6d':'#34f5a0';
+    ctx.beginPath();ctx.arc(W*0.5,my,5+bankGlow*6,0,7);ctx.fill();
+  }
+  // multiplier readout
+  ctx.textAlign='center';
+  const big = state===S.over? '—' : (mult).toFixed(2)+'x';
+  ctx.font='900 '+Math.min(W*0.2,104)+'px Archivo, system-ui, sans-serif';
+  ctx.fillStyle = state===S.over?'#ff4d6d':(held?'#e8fff4':'#5e7068');
+  ctx.shadowColor= held?'rgba(52,245,160,.4)':'transparent';ctx.shadowBlur=held?26:0;
+  if(state!==S.menu) ctx.fillText(big, W/2, H*0.18);
+  ctx.shadowBlur=0;
+  // banked score
+  ctx.font='600 16px IBM Plex Mono, monospace';ctx.fillStyle='#34f5a0';
+  if(state!==S.menu)ctx.fillText('BANKED  '+fmt(score), W/2, H*0.90);
+  // hint
+  if(state===S.pump){
+    ctx.font='500 12px IBM Plex Mono, monospace';ctx.fillStyle='#5e7068';
+    ctx.fillText(held?'release to bank →':'hold to pump', W/2, H*0.95);
+  }
+  // cash float
+  if(cashFloat){ctx.globalAlpha=Math.max(cashFloat.life,0);
+    ctx.font='800 24px Archivo, sans-serif';ctx.fillStyle='#34f5a0';
+    ctx.fillText('+'+cashFloat.v.toFixed(2)+'x', W/2, cashFloat.y);ctx.globalAlpha=1;}
+  // particles
+  particles.forEach(p=>{ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle=p.c;
+    ctx.fillRect(p.x,p.y,3,3);});ctx.globalAlpha=1;
+  ctx.restore();
+  // crash flash
+  if(crashFlash>0.01){ctx.fillStyle='rgba(255,77,109,'+(crashFlash*0.5)+')';ctx.fillRect(0,0,W,H);}
+}
+
+resize();requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
