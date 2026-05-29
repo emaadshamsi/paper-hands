@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>COPY TRADE — repeat the whale's moves</title>
+<style>
+  :root{--bg:#070a09;--ink:#e8fff4;--green:#34f5a0;--amber:#f5c518;--blue:#5cc8ff;--red:#ff4d6d;--hair:#16201b;--faint:#5e7068}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:var(--bg);overflow:hidden;color:var(--ink);
+    font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #stage{position:relative;width:min(100vw,calc(100vh*0.625));height:min(100vh,calc(100vw*1.6));
+    max-width:520px;max-height:832px;background:radial-gradient(120% 80% at 50% 0%,#0c1612,#070a09 60%);
+    border:1px solid var(--hair);box-shadow:0 0 80px rgba(52,245,160,.06),inset 0 0 120px rgba(0,0,0,.6);overflow:hidden;
+    display:flex;flex-direction:column;align-items:center;justify-content:center}
+  #fx{position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:.5;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 1px,transparent 1px 3px)}
+  .lbl{position:absolute;font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase}
+  #brand{top:16px;left:16px}#bestlbl{top:16px;right:16px}
+  #status{position:absolute;top:0;left:0;right:0;text-align:center;padding-top:64px;font-size:14px;color:var(--green);font-weight:600;letter-spacing:.1em}
+  #grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:min(78%,360px);aspect-ratio:1;z-index:2}
+  .pad{border-radius:18px;border:2px solid;cursor:pointer;opacity:.32;transition:opacity .08s,box-shadow .08s,transform .06s}
+  .pad.on{opacity:1;transform:scale(1.02)}
+  .pad:active{transform:scale(.97)}
+  .p0{background:rgba(52,245,160,.4);border-color:var(--green)} .p0.on{box-shadow:0 0 36px var(--green)}
+  .p1{background:rgba(245,197,24,.4);border-color:var(--amber)} .p1.on{box-shadow:0 0 36px var(--amber)}
+  .p2{background:rgba(92,200,255,.4);border-color:var(--blue)} .p2.on{box-shadow:0 0 36px var(--blue)}
+  .p3{background:rgba(255,77,109,.4);border-color:var(--red)} .p3.on{box-shadow:0 0 36px var(--red)}
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:28px;gap:14px;z-index:5;background:radial-gradient(80% 60% at 50% 45%,rgba(7,10,9,.74),rgba(7,10,9,.95));backdrop-filter:blur(2px)}
+  #overlay.hide{display:none}
+  #title{font-family:Archivo,system-ui,sans-serif;font-weight:900;font-size:clamp(38px,11vw,62px);line-height:.92;
+    letter-spacing:-.02em;color:var(--green);text-shadow:0 0 30px rgba(52,245,160,.35)}
+  #title small{display:block;font-size:.3em;letter-spacing:.34em;color:var(--ink);font-weight:700;margin-top:10px}
+  #title.dead{color:var(--red);text-shadow:0 0 24px rgba(255,77,109,.4)}
+  .tag{color:var(--faint);font-size:13px;max-width:300px;line-height:1.6}.tag b{color:var(--amber)}
+  #cta{margin-top:6px;font-size:13px;letter-spacing:.18em;color:var(--green);border:1px solid #1c8f5e;
+    padding:12px 22px;border-radius:2px;text-transform:uppercase;animation:pulse 1.6s ease-in-out infinite;cursor:pointer}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(52,245,160,.06)}}
+  .stat b{color:var(--green);font-size:22px}
+  #foot{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:.14em;color:#2c3a33}
+  #foot a{color:#2c3a33;text-decoration:none;border-bottom:1px dotted #223}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage">
+  <div id="fx"></div>
+  <div class="lbl" id="brand">COPY TRADE</div><div class="lbl" id="bestlbl">BEST 0</div>
+  <div id="status"></div>
+  <div id="grid">
+    <div class="pad p0" data-i="0"></div><div class="pad p1" data-i="1"></div>
+    <div class="pad p2" data-i="2"></div><div class="pad p3" data-i="3"></div>
+  </div>
+  <div id="overlay">
+    <div id="title">COPY<br>TRADE<small>REPEAT THE WHALE'S MOVES</small></div>
+    <div class="tag">The whale plays a sequence of trades. <b>Repeat it</b> in order. Each round
+      adds one more move. One wrong tap and you're liquidated. How long's your memory?</div>
+    <div id="cta">TAP TO START</div>
+  </div>
+  <div id="foot">a money_maker arcade · <a href="/paper-hands/">arcade ↗</a></div>
+</div></div>
+<script>
+(()=>{"use strict";
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const overlay=$("#overlay"),titleEl=$("#title"),tagEl=$(".tag"),cta=$("#cta"),bestlbl=$("#bestlbl"),statusEl=$("#status"),stage=$("#stage");
+const pads=$$(".pad");
+let best=+(localStorage.getItem('ct_best')||0);bestlbl.textContent='BEST '+best;
+const beatTarget=+(new URLSearchParams(location.search).get('s')||0);
+if(beatTarget>0)tagEl.innerHTML+='<br><span style="color:#5cc8ff">📈 a friend reached round '+beatTarget+' — beat them.</span>';
+let AC=null;function ac(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}return AC}
+function tone(f,d=.28,t='sine',v=.2){const a=ac();if(!a)return;const o=a.createOscillator(),g=a.createGain();o.type=t;o.frequency.value=f;g.gain.value=v;o.connect(g);g.connect(a.destination);const n=a.currentTime;g.gain.exponentialRampToValueAtTime(.0001,n+d);o.start(n);o.stop(n+d);}
+function buzz(){const a=ac();if(!a)return;const o=a.createOscillator(),g=a.createGain();o.type='sawtooth';o.frequency.value=110;g.gain.value=.25;o.connect(g);g.connect(a.destination);const n=a.currentTime;g.gain.exponentialRampToValueAtTime(.0001,n+.5);o.start(n);o.stop(n+.5);}
+const FREQ=[392,523,659,784];
+let seq=[],inp=0,round=0,accepting=false;
+function flash(i,ms=380){return new Promise(res=>{pads[i].classList.add('on');tone(FREQ[i]);setTimeout(()=>{pads[i].classList.remove('on');setTimeout(res,120);},ms);});}
+async function playSeq(){accepting=false;statusEl.textContent="WATCH…";await new Promise(r=>setTimeout(r,500));
+  for(const i of seq){await flash(i, Math.max(220,420-round*8));}
+  statusEl.textContent="YOUR MOVE";inp=0;accepting=true;}
+function start(){if(ac()&&ac().state==='suspended')ac().resume();seq=[];round=0;overlay.classList.add('hide');titleEl.className='';next();}
+function next(){round++;seq.push(Math.floor(Math.random()*4));bestlbl.textContent='BEST '+best;statusEl.textContent="ROUND "+round;setTimeout(playSeq,500);}
+function over(){accepting=false;buzz();stage.animate?stage.animate([{transform:'translateX(-8px)'},{transform:'translateX(8px)'},{transform:'translateX(0)'}],{duration:200,iterations:2}):0;
+  if(round-1>best){best=round-1;localStorage.setItem('ct_best',best);}bestlbl.textContent='BEST '+best;
+  statusEl.textContent="";titleEl.className='dead';titleEl.innerHTML='LIQUIDATED.';
+  tagEl.innerHTML='<span class="stat">reached <b>round '+(round-1)+'</b></span><br><span class="stat">best <b style="color:var(--green)">round '+best+'</b></span>';
+  cta.textContent='TAP TO RUN IT BACK';buildShare(round-1);overlay.classList.remove('hide');}
+function buildShare(r){let b=document.getElementById('sh');if(!b){b=document.createElement('div');b.id='sh';b.style.cssText='margin-top:2px;font-size:12px;letter-spacing:.16em;color:#5cc8ff;border:1px solid #1c4a5e;padding:9px 18px;border-radius:2px;text-transform:uppercase;cursor:pointer';overlay.appendChild(b);}b.textContent='📈 SHARE SCORE';b.onclick=e=>{e.stopPropagation();const u=location.origin+location.pathname+'?s='+r;const t='I copied the whale to round '+r+' in COPY TRADE 📈 beat me: '+u;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>b.textContent='✓ COPIED — GO BRAG').catch(()=>b.textContent=t);};}
+pads.forEach(p=>p.addEventListener('pointerdown',async()=>{if(!accepting)return;const i=+p.dataset.i;
+  pads[i].classList.add('on');tone(FREQ[i]);setTimeout(()=>pads[i].classList.remove('on'),160);
+  if(i===seq[inp]){inp++;if(inp===seq.length){accepting=false;statusEl.textContent="✓ NICE";await new Promise(r=>setTimeout(r,420));next();}}
+  else{over();}}));
+overlay.addEventListener('pointerdown',e=>{if(e.target.id==='sh')return;if(overlay.classList.contains('hide'))return;start();});
+})();
+</script>
+</body>
+</html>
