@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>BAG RUN — catch the bags, dodge the rugs</title>
+<style>
+  :root{--bg:#070a09;--ink:#e8fff4;--green:#34f5a0;--red:#ff4d6d;--amber:#f5c518;--hair:#16201b;--faint:#5e7068}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:var(--bg);overflow:hidden;color:var(--ink);
+    font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #stage{position:relative;width:min(100vw,calc(100vh*0.625));height:min(100vh,calc(100vw*1.6));
+    max-width:520px;max-height:832px;background:radial-gradient(120% 80% at 50% 0%,#0c1612,#070a09 60%);
+    border:1px solid var(--hair);box-shadow:0 0 80px rgba(52,245,160,.06),inset 0 0 120px rgba(0,0,0,.6);overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+  #fx{position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:.5;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 1px,transparent 1px 3px)}
+  .lbl{position:absolute;font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase}
+  #brand{top:16px;left:16px}#bestlbl{top:16px;right:16px}
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:28px;gap:14px;z-index:5;background:radial-gradient(80% 60% at 50% 45%,rgba(7,10,9,.72),rgba(7,10,9,.94));backdrop-filter:blur(2px)}
+  #overlay.hide{display:none}
+  #title{font-family:Archivo,system-ui,sans-serif;font-weight:900;font-size:clamp(40px,12vw,66px);line-height:.92;
+    letter-spacing:-.02em;color:var(--green);text-shadow:0 0 30px rgba(52,245,160,.35)}
+  #title small{display:block;font-size:.28em;letter-spacing:.34em;color:var(--ink);font-weight:700;margin-top:10px}
+  #title.dead{color:var(--red);text-shadow:0 0 24px rgba(255,77,109,.4)}
+  .tag{color:var(--faint);font-size:13px;max-width:300px;line-height:1.6}.tag b{color:var(--amber)}
+  .tag .g{color:var(--green)}.tag .r{color:var(--red)}
+  #cta{margin-top:6px;font-size:13px;letter-spacing:.18em;color:var(--green);border:1px solid #1c8f5e;
+    padding:12px 22px;border-radius:2px;text-transform:uppercase;animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(52,245,160,.06)}}
+  .stat b{color:var(--green);font-size:22px}
+  #foot{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:.14em;color:#2c3a33}
+  #foot a{color:#2c3a33;text-decoration:none;border-bottom:1px dotted #223}
+  @media(hover:hover){#cta::after{content:" · MOVE MOUSE / ←→"}}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage">
+  <canvas id="c"></canvas><div id="fx"></div>
+  <div class="lbl" id="brand">BAG RUN</div><div class="lbl" id="bestlbl">BEST 0</div>
+  <div id="overlay">
+    <div id="title">BAG<br>RUN<small>CATCH BAGS · DODGE RUGS</small></div>
+    <div class="tag">Move to catch the falling <b class="g">$ bags</b>. Touch a <b class="r">RUG</b> and
+      it's over. It rains faster the richer you get. Move with mouse, touch, or ← →.</div>
+    <div id="cta">TAP / MOVE TO START</div>
+  </div>
+  <div id="foot">a money_maker arcade · <a href="/paper-hands/">PAPER HANDS</a> · <a href="/paper-hands/sell-the-top/">SELL THE TOP</a> · <a href="/paper-hands/rug-dodger/">RUG DODGER</a></div>
+</div></div>
+<script>
+(()=>{"use strict";
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),stage=document.getElementById('stage');
+const overlay=document.getElementById('overlay'),titleEl=document.getElementById('title'),tagEl=document.querySelector('.tag'),cta=document.getElementById('cta'),bestlbl=document.getElementById('bestlbl');
+let W=0,H=0;
+function resize(){const r=stage.getBoundingClientRect();W=r.width;H=r.height;const d=Math.min(devicePixelRatio||1,2);cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0);}
+addEventListener('resize',resize);
+let AC=null;function ac(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}return AC}
+function tone(f,d,t='square',v=.15){const a=ac();if(!a)return;const o=a.createOscillator(),g=a.createGain();o.type=t;o.frequency.value=f;g.gain.value=v;o.connect(g);g.connect(a.destination);const n=a.currentTime;g.gain.exponentialRampToValueAtTime(.0001,n+d);o.start(n);o.stop(n+d);}
+function noise(d=.4,v=.4){const a=ac();if(!a)return;const n=a.sampleRate*d,b=a.createBuffer(1,n,a.sampleRate),dd=b.getChannelData(0);for(let i=0;i<n;i++)dd[i]=(Math.random()*2-1)*(1-i/n);const s=a.createBufferSource(),g=a.createGain(),f=a.createBiquadFilter();f.type='lowpass';f.frequency.value=900;s.buffer=b;g.gain.value=v;s.connect(f);f.connect(g);g.connect(a.destination);s.start();}
+
+const S={menu:0,play:1,over:2};let state=S.menu;
+let score=0,best=+(localStorage.getItem('bag_best')||0),px=0.5,items=[],spawnT=0,fall=0.34,rate=0.85,shake=0,flash=0,particles=[],pop=null,t=0;
+bestlbl.textContent='BEST '+fmt(best);
+const beatTarget=+(new URLSearchParams(location.search).get('s')||0);
+if(beatTarget>0)tagEl.innerHTML+='<br><span style="color:#5cc8ff">📈 a friend banked $'+beatTarget.toLocaleString()+' — beat them.</span>';
+function fmt(n){return '$'+Math.floor(n).toLocaleString()}
+function reset(){score=0;items=[];spawnT=0;fall=0.34;rate=0.85;t=0;px=0.5;}
+function start(){reset();state=S.play;overlay.classList.add('hide');if(ac()&&ac().state==='suspended')ac().resume();}
+function gameOver(){state=S.over;shake=22;flash=1;noise(.5,.5);tone(120,.5,'sawtooth',.25);
+  for(let i=0;i<46;i++)particles.push({x:px*W,y:H*0.9,vx:(Math.random()-.5)*9,vy:(Math.random()-.5)*9-2,life:1,c:'#ff4d6d'});
+  if(score>best){best=Math.floor(score);localStorage.setItem('bag_best',best);}bestlbl.textContent='BEST '+fmt(best);
+  titleEl.className='dead';titleEl.innerHTML='RUGGED.';
+  tagEl.innerHTML='<span class="stat">banked <b>'+fmt(score)+'</b></span><br><span class="stat">best <b style="color:var(--green)">'+fmt(best)+'</b></span>';
+  cta.textContent='TAP TO RUN IT BACK';buildShare(Math.floor(score));overlay.classList.remove('hide');}
+function buildShare(amt){let b=document.getElementById('sh');if(!b){b=document.createElement('div');b.id='sh';b.style.cssText='margin-top:2px;font-size:12px;letter-spacing:.16em;color:#5cc8ff;border:1px solid #1c4a5e;padding:9px 18px;border-radius:2px;text-transform:uppercase;cursor:pointer';overlay.appendChild(b);}b.textContent='📈 SHARE SCORE';b.onclick=e=>{e.stopPropagation();const u=location.origin+location.pathname+'?s='+amt;const tx='I banked $'+amt.toLocaleString()+' in BAG RUN 📈 beat me: '+u;(navigator.clipboard?navigator.clipboard.writeText(tx):Promise.reject()).then(()=>b.textContent='✓ COPIED — GO BRAG').catch(()=>b.textContent=tx);};}
+
+function startIfMenu(){if(state===S.menu||state===S.over)start();}
+stage.addEventListener('mousemove',e=>{const r=stage.getBoundingClientRect();px=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width));});
+stage.addEventListener('mousedown',startIfMenu);
+stage.addEventListener('touchstart',e=>{startIfMenu();},{passive:true});
+stage.addEventListener('touchmove',e=>{const r=stage.getBoundingClientRect();px=Math.max(0,Math.min(1,(e.touches[0].clientX-r.left)/r.width));e.preventDefault();},{passive:false});
+let kl=0,kr=0;
+addEventListener('keydown',e=>{if(e.code==='ArrowLeft')kl=1;if(e.code==='ArrowRight')kr=1;if(e.code==='Space'||e.code==='Enter')startIfMenu();});
+addEventListener('keyup',e=>{if(e.code==='ArrowLeft')kl=0;if(e.code==='ArrowRight')kr=0;});
+
+let last=performance.now();
+function frame(now){const dt=Math.min((now-last)/1000,.05);last=now;t+=dt;
+  if(state===S.play){
+    if(kl)px=Math.max(0,px-1.4*dt); if(kr)px=Math.min(1,px+1.4*dt);
+    spawnT-=dt;
+    if(spawnT<=0){const rug=Math.random()<0.30;items.push({x:0.08+Math.random()*0.84,y:-0.05,rug,val:rug?0:(5+Math.floor(Math.random()*15))});spawnT=rate;}
+    const sp=fall+t*0.012;
+    for(const it of items){it.y+=sp*dt;}
+    // collision near player row (y ~0.9)
+    const pyr=0.9;
+    for(const it of items){
+      if(!it.dead&&Math.abs(it.y-pyr)<0.04&&Math.abs(it.x-px)<0.09){
+        if(it.rug){flash=1;gameOver();return;}
+        it.dead=true;score+=it.val;pop={t:'+$'+it.val,x:it.x,y:it.y,life:1};
+        tone(660+Math.min(score,600),.06,'square',.13);
+        for(let i=0;i<8;i++)particles.push({x:it.x*W,y:pyr*H,vx:(Math.random()-.5)*5,vy:-Math.random()*4-1,life:1,c:'#34f5a0'});
+      }
+    }
+    items=items.filter(it=>!it.dead&&it.y<1.08);
+    rate=Math.max(0.34,0.85-t*0.012); // spawn faster over time
+  }
+  shake*=0.86;flash*=0.9;if(pop){pop.life-=dt*1.6;if(pop.life<=0)pop=null;}
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.25;p.life-=dt*1.4;});particles=particles.filter(p=>p.life>0);
+  draw();requestAnimationFrame(frame);}
+function draw(){ctx.save();ctx.clearRect(0,0,W,H);ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+  // falling items
+  if(state!==S.menu){
+    for(const it of items){const x=it.x*W,y=it.y*H,s=Math.min(W*0.07,30);
+      ctx.fillStyle=it.rug?'#ff4d6d':'#34f5a0';ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=12;
+      if(it.rug){ctx.fillRect(x-s/2,y-s/2,s,s);}else{ctx.beginPath();ctx.arc(x,y,s/2,0,7);ctx.fill();}
+      ctx.shadowBlur=0;ctx.fillStyle='#07120d';ctx.font='700 '+Math.round(s*0.5)+'px Archivo,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.fillText(it.rug?'☠':'$',x,y+1);ctx.textBaseline='alphabetic';
+    }
+    // player "wallet"
+    const py=0.9*H,pw=Math.min(W*0.16,80);
+    ctx.fillStyle='#e8fff4';ctx.shadowColor='#34f5a0';ctx.shadowBlur=16;
+    ctx.fillRect(px*W-pw/2,py-6,pw,12);ctx.shadowBlur=0;
+  }
+  ctx.textAlign='center';ctx.font='600 16px IBM Plex Mono,monospace';ctx.fillStyle='#34f5a0';
+  if(state!==S.menu)ctx.fillText('BANKED  '+fmt(score),W/2,H*0.12);
+  if(pop){ctx.globalAlpha=Math.max(pop.life,0);ctx.font='800 20px Archivo,sans-serif';ctx.fillStyle='#34f5a0';ctx.fillText(pop.t,pop.x*W,pop.y*H-14);ctx.globalAlpha=1;}
+  particles.forEach(p=>{ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,3,3);});ctx.globalAlpha=1;
+  ctx.restore();
+  if(flash>0.01){ctx.fillStyle='rgba(255,77,109,'+(flash*0.5)+')';ctx.fillRect(0,0,W,H);}
+}
+resize();requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
