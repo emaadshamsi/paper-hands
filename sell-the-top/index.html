@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no"/>
+<title>SELL THE TOP</title>
+<style>
+  :root{--bg:#070a09;--ink:#e8fff4;--green:#34f5a0;--red:#ff4d6d;--amber:#f5c518;--hair:#16201b;--faint:#5e7068}
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:var(--bg);overflow:hidden;color:var(--ink);
+    font-family:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace}
+  #wrap{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #stage{position:relative;width:min(100vw,calc(100vh*0.625));height:min(100vh,calc(100vw*1.6));
+    max-width:520px;max-height:832px;background:radial-gradient(120% 80% at 50% 0%,#0c1612,#070a09 60%);
+    border:1px solid var(--hair);box-shadow:0 0 80px rgba(52,245,160,.06),inset 0 0 120px rgba(0,0,0,.6);overflow:hidden}
+  canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+  #fx{position:absolute;inset:0;pointer-events:none;mix-blend-mode:overlay;opacity:.5;
+    background:repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 1px,transparent 1px 3px)}
+  .lbl{position:absolute;font-size:11px;letter-spacing:.22em;color:var(--faint);text-transform:uppercase}
+  #brand{top:16px;left:16px}#bestlbl{top:16px;right:16px}
+  #overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:28px;gap:14px;z-index:5;background:radial-gradient(80% 60% at 50% 45%,rgba(7,10,9,.72),rgba(7,10,9,.94));backdrop-filter:blur(2px)}
+  #overlay.hide{display:none}
+  #title{font-family:Archivo,system-ui,sans-serif;font-weight:900;font-size:clamp(38px,11vw,62px);line-height:.92;
+    letter-spacing:-.02em;color:var(--green);text-shadow:0 0 30px rgba(52,245,160,.35)}
+  #title small{display:block;font-size:.3em;letter-spacing:.38em;color:var(--ink);font-weight:700;margin-top:10px}
+  #title.dead{color:var(--red);text-shadow:0 0 24px rgba(255,77,109,.4)}
+  .tag{color:var(--faint);font-size:13px;max-width:300px;line-height:1.6}.tag b{color:var(--amber);font-weight:600}
+  #cta{margin-top:6px;font-size:13px;letter-spacing:.18em;color:var(--green);border:1px solid #1c8f5e;
+    padding:12px 22px;border-radius:2px;text-transform:uppercase;animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{50%{box-shadow:0 0 0 6px rgba(52,245,160,.06)}}
+  .stat b{color:var(--green);font-size:22px}
+  #foot{position:absolute;bottom:10px;left:0;right:0;text-align:center;font-size:10px;letter-spacing:.15em;color:#2c3a33}
+  @media(hover:hover){#cta::after{content:" · SPACE / CLICK"}}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="stage">
+  <canvas id="c"></canvas><div id="fx"></div>
+  <div class="lbl" id="brand">SELL THE TOP</div><div class="lbl" id="bestlbl">BEST 0</div>
+  <div id="overlay">
+    <div id="title">SELL<br>THE TOP<small>NAIL THE GREEN · OR GET REKT</small></div>
+    <div class="tag">The marker sweeps the chart. <b>Tap</b> when it's inside the green
+      <b>sell zone</b> to bank — dead-center pays a perfect. Each sale the zone <b>shrinks</b>
+      and the market speeds up. Miss the zone once and you're out.</div>
+    <div id="cta">TAP TO START</div>
+  </div>
+  <div id="foot">a money_maker mini · v1.0</div>
+</div></div>
+<script>
+(()=>{"use strict";
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),stage=document.getElementById('stage');
+const overlay=document.getElementById('overlay'),titleEl=document.getElementById('title'),tagEl=document.querySelector('.tag'),cta=document.getElementById('cta'),bestlbl=document.getElementById('bestlbl');
+let W=0,H=0,DPR=1;
+function resize(){const r=stage.getBoundingClientRect();W=r.width;H=r.height;DPR=Math.min(devicePixelRatio||1,2);cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);}
+addEventListener('resize',resize);
+let AC=null;function ac(){if(!AC){try{AC=new(window.AudioContext||window.webkitAudioContext)()}catch(e){}}return AC}
+function tone(f,d,t='square',v=.16){const a=ac();if(!a)return;const o=a.createOscillator(),g=a.createGain();o.type=t;o.frequency.value=f;g.gain.value=v;o.connect(g);g.connect(a.destination);const n=a.currentTime;g.gain.exponentialRampToValueAtTime(.0001,n+d);o.start(n);o.stop(n+d);}
+function noise(d=.4,v=.4){const a=ac();if(!a)return;const n=a.sampleRate*d,b=a.createBuffer(1,n,a.sampleRate),dd=b.getChannelData(0);for(let i=0;i<n;i++)dd[i]=(Math.random()*2-1)*(1-i/n);const s=a.createBufferSource(),g=a.createGain(),f=a.createBiquadFilter();f.type='lowpass';f.frequency.value=900;s.buffer=b;g.gain.value=v;s.connect(f);f.connect(g);g.connect(a.destination);s.start();}
+
+const S={menu:0,play:1,over:2};let state=S.menu;
+let score=0,best=+(localStorage.getItem('sz_best')||0),round=0;
+let pos=0.5,dir=1,speed=0.9,zoneC=0.5,zoneW=0.32,shake=0,flash=0,particles=[],popText=null,perfStreak=0;
+bestlbl.textContent='BEST '+fmt(best);
+const beatTarget=+(new URLSearchParams(location.search).get('s')||0);
+if(beatTarget>0)tagEl.innerHTML+='<br><span style="color:#5cc8ff">📈 a friend banked $'+beatTarget.toLocaleString()+' — beat them.</span>';
+function fmt(n){return '$'+Math.floor(n).toLocaleString()}
+const TX=()=>W*0.12, TW=()=>W*0.76; // track x-start, width
+
+function reset(){score=0;round=0;speed=0.9;zoneW=0.32;pos=0;dir=1;perfStreak=0;newZone();}
+function newZone(){zoneC=0.18+Math.random()*0.64;}
+function start(){reset();state=S.play;overlay.classList.add('hide');if(ac()&&ac().state==='suspended')ac().resume();}
+function sell(){
+  if(state!==S.play)return;
+  const d=Math.abs(pos-zoneC), half=zoneW/2;
+  if(d<=half){
+    const acc=1-d/half;                       // 0..1, 1=dead center
+    const perfect=acc>0.82;
+    const gain=Math.round((10+round*4)*(1+acc*acc*3))*(perfect?2:1);
+    score+=gain; round++;
+    perfStreak=perfect?perfStreak+1:0;
+    popText={t:(perfect?'PERFECT ':'+')+'$'+gain,life:1,c:perfect?'#f5c518':'#34f5a0'};
+    tone(perfect?990:680,.09,'square',.16);if(perfect)tone(1320,.12,'square',.12);
+    for(let i=0;i<(perfect?22:12);i++)particles.push({x:TX()+pos*TW(),y:H*0.46,vx:(Math.random()-.5)*7,vy:(Math.random()-.5)*7-2,life:1,c:perfect?'#f5c518':'#34f5a0'});
+    zoneW=Math.max(0.05,zoneW*0.9); speed=Math.min(2.6,speed*1.07); newZone();
+  } else { gameOver(); }
+}
+function gameOver(){state=S.over;shake=24;flash=1;noise(.5,.5);tone(120,.5,'sawtooth',.25);
+  for(let i=0;i<50;i++)particles.push({x:TX()+pos*TW(),y:H*0.46,vx:(Math.random()-.5)*9,vy:(Math.random()-.5)*9-2,life:1,c:'#ff4d6d'});
+  if(score>best){best=Math.floor(score);localStorage.setItem('sz_best',best);}bestlbl.textContent='BEST '+fmt(best);showOver();}
+function showOver(){overlay.classList.remove('hide');titleEl.className='dead';
+  titleEl.innerHTML='REKT.';
+  tagEl.innerHTML='<span class="stat">banked <b>'+fmt(score)+'</b></span><br><span class="stat">best <b style="color:var(--green)">'+fmt(best)+'</b></span><br><span style="color:var(--faint)">survived '+round+' sells</span>';
+  cta.textContent='TAP TO RUN IT BACK';buildShare(Math.floor(score));}
+function buildShare(amt){let b=document.getElementById('sh');if(!b){b=document.createElement('div');b.id='sh';b.style.cssText='margin-top:2px;font-size:12px;letter-spacing:.16em;color:#5cc8ff;border:1px solid #1c4a5e;padding:9px 18px;border-radius:2px;text-transform:uppercase;cursor:pointer';overlay.appendChild(b);}b.textContent='📈 SHARE SCORE';b.onclick=e=>{e.stopPropagation();const u=location.origin+location.pathname+'?s='+amt;const t='I banked $'+amt.toLocaleString()+' in SELL THE TOP 📈 beat me: '+u;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>b.textContent='✓ COPIED — GO BRAG').catch(()=>b.textContent=t);};}
+
+function press(e){if(e&&e.cancelable)e.preventDefault();if(state===S.menu||state===S.over)start();else if(state===S.play)sell();}
+stage.addEventListener('mousedown',press);stage.addEventListener('touchstart',press,{passive:false});
+addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='Enter')&&!e.repeat)press(e);});
+
+let last=performance.now();
+function frame(now){const dt=Math.min((now-last)/1000,.05);last=now;
+  if(state===S.play){pos+=dir*speed*dt;if(pos>1){pos=1;dir=-1;}if(pos<0){pos=0;dir=1;}}
+  shake*=0.86;flash*=0.9;if(popText){popText.life-=dt*1.4;if(popText.life<=0)popText=null;}
+  particles.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.vy+=.25;p.life-=dt*1.4;});particles=particles.filter(p=>p.life>0);
+  draw();requestAnimationFrame(frame);}
+function draw(){ctx.save();ctx.clearRect(0,0,W,H);ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+  const tx=TX(),tw=TW(),ty=H*0.46;
+  // track
+  ctx.strokeStyle='rgba(52,245,160,.12)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(tx+tw,ty);ctx.stroke();
+  if(state!==S.menu){
+    // sell zone
+    const zx=tx+(zoneC-zoneW/2)*tw, zw=zoneW*tw;
+    const pulse=0.5+0.5*Math.sin(performance.now()/220);
+    ctx.fillStyle='rgba(52,245,160,'+(0.18+pulse*0.14)+')';ctx.fillRect(zx,ty-26,zw,52);
+    ctx.strokeStyle='#34f5a0';ctx.lineWidth=2;ctx.strokeRect(zx,ty-26,zw,52);
+    // center tick (the "top")
+    ctx.strokeStyle='#f5c518';ctx.globalAlpha=.6;ctx.beginPath();ctx.moveTo(tx+zoneC*tw,ty-30);ctx.lineTo(tx+zoneC*tw,ty+30);ctx.stroke();ctx.globalAlpha=1;
+    // marker
+    const mx=tx+pos*tw;ctx.fillStyle=state===S.over?'#ff4d6d':'#e8fff4';ctx.shadowColor=state===S.over?'#ff4d6d':'#34f5a0';ctx.shadowBlur=18;
+    ctx.fillRect(mx-2.5,ty-40,5,80);ctx.shadowBlur=0;
+  }
+  ctx.textAlign='center';
+  ctx.font='600 16px IBM Plex Mono,monospace';ctx.fillStyle='#34f5a0';
+  if(state!==S.menu)ctx.fillText('BANKED  '+fmt(score),W/2,H*0.18);
+  ctx.font='500 12px IBM Plex Mono,monospace';ctx.fillStyle='#5e7068';
+  if(state===S.play)ctx.fillText('tap inside the green',W/2,H*0.86);
+  if(perfStreak>1&&state===S.play){ctx.fillStyle='#f5c518';ctx.font='700 13px IBM Plex Mono,monospace';ctx.fillText(perfStreak+'× PERFECT STREAK 🔥',W/2,H*0.62);}
+  if(popText){ctx.globalAlpha=Math.max(popText.life,0);ctx.font='800 26px Archivo,sans-serif';ctx.fillStyle=popText.c;ctx.fillText(popText.t,W/2,H*0.32);ctx.globalAlpha=1;}
+  particles.forEach(p=>{ctx.globalAlpha=Math.max(p.life,0);ctx.fillStyle=p.c;ctx.fillRect(p.x,p.y,3,3);});ctx.globalAlpha=1;
+  ctx.restore();
+  if(flash>0.01){ctx.fillStyle='rgba(255,77,109,'+(flash*0.5)+')';ctx.fillRect(0,0,W,H);}
+}
+resize();requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
